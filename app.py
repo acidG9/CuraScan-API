@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import pickle
 import pandas as pd
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -25,10 +26,7 @@ columns = [
 ]
 
 def preprocess(data):
-    # Simplified encoding
     df = pd.DataFrame([data])
-    
-    # Convert categorical to numeric
     replace_dict = {
         "Normal": 0, "Abnormal": 1,
         "Negative": 0, "Positive": 1
@@ -40,7 +38,7 @@ def preprocess(data):
                 systolic, diastolic = bp.split('/')
                 df[col] = (int(systolic) + int(diastolic)) / 2
             except:
-                df[col] = 120  # fallback
+                df[col] = 120
         elif col == "Visual Acuity Test":
             va = df.at[0, col]
             try:
@@ -49,7 +47,10 @@ def preprocess(data):
             except:
                 df[col] = 20
         elif col == "Tonometry":
-            df[col] = int(str(df.at[0, col]).replace("mmHg", "").strip())
+            try:
+                df[col] = int(str(df.at[0, col]).replace("mmHg", "").strip())
+            except:
+                df[col] = 15
         elif isinstance(df.at[0, col], str):
             df[col] = replace_dict.get(df.at[0, col], df.at[0, col])
     
@@ -65,5 +66,10 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "API is up and running!"})
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
