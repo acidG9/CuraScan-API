@@ -1,83 +1,81 @@
-from flask import Flask, request, jsonify
-import pickle
-import pandas as pd
-from flask_cors import CORS
-import os
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import numpy as np
+import joblib
 
-app = Flask(__name__)
-CORS(app)
+# Load model and scaler
+model_data = joblib.load("trained_models_and_scaler.joblib")
+rf_model = model_data['rf_model']
+lr_model = model_data['lr_model']
+scaler = model_data['scaler']
 
-# Load the trained model
-with open("decision_tree_model.pkl", "rb") as f:
-    model = pickle.load(f)
+# Initialize FastAPI app
+app = FastAPI()
 
-# Input features used during model training
-columns = [
-    "Age", "Blood Group", "BP", "CBC (Complete Blood Count)",
-    "LFT (Liver Function Test)", "RFT (Renal Function Test)",
-    "Blood Glucose Test", "Lipid Profile", "Thyroid Function Test", "HbA1c Test",
-    "Blood Culture", "X-ray", "MRI", "CT Scan", "Ultrasound", "PET Scan",
-    "Mammography", "Bone Density Scan", "Skin Biopsy", "Needle Biopsy",
-    "Surgical Biopsy", "Bone Marrow Biopsy", "Lymph Node Biopsy", "Karyotyping",
-    "BRCA Gene Test", "Whole Genome Sequencing", "Prenatal Genetic Screening",
-    "Urinalysis", "Urine Culture", "Urine Cytology", "24-Hour Urine Test",
-    "Stool Culture", "Occult Blood Test", "Ova and Parasite Exam",
-    "Calprotectin Test", "Patch Test", "Skin Prick Test", "Intradermal Test",
-    "Mantoux Test (TB Test)", "Visual Acuity Test", "Tonometry",
-    "Retinal Examination", "Slit-Lamp Examination", "Audiometry", "Tympanometry",
-    "Otoacoustic Emissions Test", "Auditory Brainstem Response (ABR)"
-]
+# Health check route
+@app.get("/")
+def read_root():
+    return {"message": "API is running ✅"}
 
-def preprocess(data):
-    df = pd.DataFrame([data])
+# Define input schema
+class PatientData(BaseModel):
+    Age: float
+    CBC: float
+    LFT: float
+    RFT: float
+    Blood_Glucose_Test: float
+    Lipid_Profile: float
+    Thyroid_Function_Test: float
+    HbA1c_Test: float
+    Blood_Culture: float
+    X_ray: float
+    MRI: float
+    CT_Scan: float
+    Ultrasound: float
+    PET_Scan: float
+    Mammography: float
+    Bone_Density_Scan: float
+    Skin_Biopsy: float
+    Needle_Biopsy: float
+    Surgical_Biopsy: float
+    Bone_Marrow_Biopsy: float
+    Lymph_Node_Biopsy: float
+    Karyotyping: float
+    BRCA_Gene_Test: float
+    Whole_Genome_Sequencing: float
+    Prenatal_Genetic_Screening: float
+    Urinalysis: float
+    Urine_Culture: float
+    Urine_Cytology: float
+    Urine_24_Hour: float
+    Stool_Culture: float
+    Occult_Blood_Test: float
+    Ova_and_Parasite_Exam: float
+    Calprotectin_Test: float
+    Patch_Test: float
+    Skin_Prick_Test: float
+    Intradermal_Test: float
+    Mantoux_Test: float
+    Visual_Acuity_Test: float
+    Tonometry: float
+    Retinal_Exam: float
+    Slit_Lamp_Exam: float
+    Audiometry: float
+    Tympanometry: float
+    Otoacoustic_Emissions_Test: float
+    ABR_Test: float
+    Blood_Group_Encoded: float
+    BP_Systolic: float
+    BP_Diastolic: float
+    LFT_RFT_Ratio: float
 
-    # Drop irrelevant fields if they exist
-    df = df.drop(columns=["ID", "Name", "Disease Present"], errors="ignore")
-
-    replace_dict = {
-        "Normal": 0, "Abnormal": 1,
-        "Negative": 0, "Positive": 1
-    }
-
-    for col in df.columns:
-        if col == "BP":
-            bp = df.at[0, col]
-            try:
-                systolic, diastolic = map(int, bp.split('/'))
-                df[col] = (systolic + diastolic) / 2
-            except:
-                df[col] = 120  # default average BP
-        elif col == "Visual Acuity Test":
-            va = df.at[0, col]
-            try:
-                left, right = map(int, va.split('/'))
-                df[col] = (left + right) / 2
-            except:
-                df[col] = 20  # default VA
-        elif col == "Tonometry":
-            try:
-                df[col] = int(str(df.at[0, col]).replace("mmHg", "").strip())
-            except:
-                df[col] = 15  # default intraocular pressure
-        elif isinstance(df.at[0, col], str):
-            df[col] = replace_dict.get(df.at[0, col], df.at[0, col])
-
-    return df[columns]
-
-@app.route("/predict", methods=["POST"])
-def predict():
+# Prediction route
+@app.post("/predict")
+def predict_disease(data: PatientData):
     try:
-        data = request.get_json()
-        processed = preprocess(data)
-        prediction = model.predict(processed)[0]
-        return jsonify({"prediction": prediction})
+        features = np.array([list(data.dict().values())])
+        scaled_features = scaler.transform(features)
+        prediction = rf_model.predict(scaled_features)
+        return {"predicted_disease": prediction[0]}
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "API is up and running!"})
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+        raise HTTPException(status_code=500, detail=str(e))
