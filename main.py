@@ -1,81 +1,80 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import numpy as np
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+import pandas as pd
 import joblib
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 
-# Load model and scaler
-model_data = joblib.load("trained_models_and_scaler.joblib")
-rf_model = model_data['rf_model']
-lr_model = model_data['lr_model']
-scaler = model_data['scaler']
-
-# Initialize FastAPI app
 app = FastAPI()
 
-# Health check route
-@app.get("/")
-def read_root():
-    return {"message": "API is running ✅"}
+# Load model and scaler
+data = joblib.load("trained_models_and_scaler.joblib")
+model: RandomForestClassifier = data["rf_model"]
+scaler: StandardScaler = data["scaler"]
+feature_names = scaler.feature_names_in_
 
-# Define input schema
-class PatientData(BaseModel):
+class InputModel(BaseModel):
     Age: float
-    CBC: float
-    LFT: float
-    RFT: float
-    Blood_Glucose_Test: float
-    Lipid_Profile: float
-    Thyroid_Function_Test: float
-    HbA1c_Test: float
-    Blood_Culture: float
-    X_ray: float
+    CBC_Complete_Blood_Count: float = Field(..., alias="CBC (Complete Blood Count)")
+    LFT_Liver_Function_Test: float = Field(..., alias="LFT (Liver Function Test)")
+    RFT_Renal_Function_Test: float = Field(..., alias="RFT (Renal Function Test)")
+    Blood_Glucose_Test: float = Field(..., alias="Blood Glucose Test")
+    Lipid_Profile: float = Field(..., alias="Lipid Profile")
+    Thyroid_Function_Test: float = Field(..., alias="Thyroid Function Test")
+    HbA1c_Test: float = Field(..., alias="HbA1c Test")
+    Blood_Culture: float = Field(..., alias="Blood Culture")
+    X_ray: float = Field(..., alias="X-ray")
     MRI: float
-    CT_Scan: float
+    CT_Scan: float = Field(..., alias="CT Scan")
     Ultrasound: float
-    PET_Scan: float
+    PET_Scan: float = Field(..., alias="PET Scan")
     Mammography: float
-    Bone_Density_Scan: float
-    Skin_Biopsy: float
-    Needle_Biopsy: float
-    Surgical_Biopsy: float
-    Bone_Marrow_Biopsy: float
-    Lymph_Node_Biopsy: float
+    Bone_Density_Scan: float = Field(..., alias="Bone Density Scan")
+    Skin_Biopsy: float = Field(..., alias="Skin Biopsy")
+    Needle_Biopsy: float = Field(..., alias="Needle Biopsy")
+    Surgical_Biopsy: float = Field(..., alias="Surgical Biopsy")
+    Bone_Marrow_Biopsy: float = Field(..., alias="Bone Marrow Biopsy")
+    Lymph_Node_Biopsy: float = Field(..., alias="Lymph Node Biopsy")
     Karyotyping: float
-    BRCA_Gene_Test: float
-    Whole_Genome_Sequencing: float
-    Prenatal_Genetic_Screening: float
+    BRCA_Gene_Test: float = Field(..., alias="BRCA Gene Test")
+    Whole_Genome_Sequencing: float = Field(..., alias="Whole Genome Sequencing")
+    Prenatal_Genetic_Screening: float = Field(..., alias="Prenatal Genetic Screening")
     Urinalysis: float
-    Urine_Culture: float
-    Urine_Cytology: float
-    Urine_24_Hour: float
-    Stool_Culture: float
-    Occult_Blood_Test: float
-    Ova_and_Parasite_Exam: float
-    Calprotectin_Test: float
-    Patch_Test: float
-    Skin_Prick_Test: float
-    Intradermal_Test: float
-    Mantoux_Test: float
-    Visual_Acuity_Test: float
+    Urine_Culture: float = Field(..., alias="Urine Culture")
+    Urine_Cytology: float = Field(..., alias="Urine Cytology")
+    Urine_24_Hour_Test: float = Field(..., alias="24-Hour Urine Test")
+    Stool_Culture: float = Field(..., alias="Stool Culture")
+    Occult_Blood_Test: float = Field(..., alias="Occult Blood Test")
+    Ova_and_Parasite_Exam: float = Field(..., alias="Ova and Parasite Exam")
+    Calprotectin_Test: float = Field(..., alias="Calprotectin Test")
+    Patch_Test: float = Field(..., alias="Patch Test")
+    Skin_Prick_Test: float = Field(..., alias="Skin Prick Test")
+    Intradermal_Test: float = Field(..., alias="Intradermal Test")
+    Mantoux_Test: float = Field(..., alias="Mantoux Test (TB Test)")
+    Visual_Acuity_Test: float = Field(..., alias="Visual Acuity Test")
     Tonometry: float
-    Retinal_Exam: float
-    Slit_Lamp_Exam: float
+    Retinal_Examination: float = Field(..., alias="Retinal Examination")
+    Slit_Lamp_Examination: float = Field(..., alias="Slit-Lamp Examination")
     Audiometry: float
     Tympanometry: float
-    Otoacoustic_Emissions_Test: float
-    ABR_Test: float
-    Blood_Group_Encoded: float
+    Otoacoustic_Emissions_Test: float = Field(..., alias="Otoacoustic Emissions Test")
+    Auditory_Brainstem_Response_ABR: float = Field(..., alias="Auditory Brainstem Response (ABR)")
+    Blood_Group_Encoded: float = Field(..., alias="Blood Group Encoded")
     BP_Systolic: float
     BP_Diastolic: float
     LFT_RFT_Ratio: float
 
-# Prediction route
+    class Config:
+        allow_population_by_field_name = True
+
+@app.get("/")
+def root():
+    return {"message": "✅ Server is running. Use POST /predict to get predictions."}
+
 @app.post("/predict")
-def predict_disease(data: PatientData):
-    try:
-        features = np.array([list(data.dict().values())])
-        scaled_features = scaler.transform(features)
-        prediction = rf_model.predict(scaled_features)
-        return {"predicted_disease": prediction[0]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def predict(input_data: InputModel):
+    original_input = input_data.dict(by_alias=True)
+    df = pd.DataFrame([original_input], columns=feature_names)
+    scaled = scaler.transform(df)
+    prediction = model.predict(scaled)[0]
+    return {"prediction": int(prediction)}
