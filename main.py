@@ -7,12 +7,13 @@ from sklearn.preprocessing import StandardScaler
 
 app = FastAPI()
 
-# Load model and scaler
+# Load the trained model and scaler
 data = joblib.load("trained_models_and_scaler.joblib")
 model: RandomForestClassifier = data["rf_model"]
 scaler: StandardScaler = data["scaler"]
 feature_names = scaler.feature_names_in_
 
+# Define input data model
 class InputModel(BaseModel):
     Age: float
     CBC_Complete_Blood_Count: float = Field(..., alias="CBC (Complete Blood Count)")
@@ -67,14 +68,20 @@ class InputModel(BaseModel):
     class Config:
         allow_population_by_field_name = True
 
+# Root endpoint
 @app.get("/")
 def root():
     return {"message": "✅ Server is running. Use POST /predict to get predictions."}
 
+# Prediction endpoint
 @app.post("/predict")
 def predict(input_data: InputModel):
+    # Convert input using aliases
     original_input = input_data.dict(by_alias=True)
+    # Construct DataFrame with the exact feature names and order
     df = pd.DataFrame([original_input], columns=feature_names)
+    df.columns = feature_names  # Make sure the column names are in the exact order and naming
+    # Scale input and predict
     scaled = scaler.transform(df)
     prediction = model.predict(scaled)[0]
     return {"prediction": int(prediction)}
